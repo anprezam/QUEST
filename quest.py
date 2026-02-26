@@ -18,14 +18,14 @@ df = load_data()
 # -------------------------
 # Limpieza y preparación
 # -------------------------
-df["hosp_visit_date"] = pd.to_datetime(df["hosp_visit_date"], errors="coerce")
-df = df.dropna(subset=["hosp_visit_date"])
+df["hosp_visit_date"] = pd.to_datetime(df["symptom_onset"], errors="coerce")
+df = df.dropna(subset=["symptom_onset"])
 
 df_grouped = (
-    df.groupby(["country", "hosp_visit_date"])
+    df.groupby(["country", "symptom_onset"])
       .size()
       .reset_index(name="cases")
-      .sort_values(["country", "hosp_visit_date"])
+      .sort_values(["country", "symptom_onset"])
 )
 
 df_grouped["cumulative_cases"] = (
@@ -46,8 +46,8 @@ countries = st.sidebar.multiselect(
 date_range = st.sidebar.date_input(
     "Selecciona rango de fechas",
     [
-        df_grouped["hosp_visit_date"].min(),
-        df_grouped["hosp_visit_date"].max()
+        df_grouped["symptom_onset"].min(),
+        df_grouped["symptom_onset"].max()
     ]
 )
 
@@ -82,15 +82,15 @@ if len(date_range) == 2:
 # Comparación por primeros N días
 if days_from_first > 0:
     df_filtered["days_since_first"] = (
-        df_filtered["hosp_visit_date"] -
-        df_filtered.groupby("country")["hosp_visit_date"].transform("min")
+        df_filtered["symptom_onset"] -
+        df_filtered.groupby("country")["symptom_onset"].transform("min")
     ).dt.days
     
     df_filtered = df_filtered[df_filtered["days_since_first"] <= days_from_first]
     x_axis = "days_since_first"
     x_label = "Días desde primer caso"
 else:
-    x_axis = "hosp_visit_date"
+    x_axis = "symptom_onset"
     x_label = "Fecha"
 
 # Selección variable Y
