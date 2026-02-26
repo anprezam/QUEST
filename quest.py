@@ -92,17 +92,30 @@ case_type = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.subheader("Vínculo con Wuhan")
 
-wuhan_options = ["De Wuhan", "Visitó Wuhan", "Sin vínculo con Wuhan", "No registrado"]
-wuhan_selection = st.sidebar.multiselect(
-    "Mostrar categorías",
-    options=wuhan_options,
-    default=wuhan_options
+wuhan_mode = st.sidebar.radio(
+    "Modo de visualización Wuhan",
+    ["Por categoría", "Total sin distinción"],
+    help=(
+        "Por categoría: filtra y/o colorea según el vínculo con Wuhan.\n\n"
+        "Total sin distinción: suma todos los casos por país ignorando el vínculo."
+    )
 )
 
-wuhan_color = st.sidebar.checkbox(
-    "Colorear por vínculo con Wuhan (en lugar de por país)",
-    value=False
-)
+wuhan_options = ["De Wuhan", "Visitó Wuhan", "Sin vínculo con Wuhan", "No registrado"]
+
+if wuhan_mode == "Por categoría":
+    wuhan_selection = st.sidebar.multiselect(
+        "Mostrar categorías",
+        options=wuhan_options,
+        default=wuhan_options
+    )
+    wuhan_color = st.sidebar.checkbox(
+        "Colorear por vínculo con Wuhan (en lugar de por país)",
+        value=False
+    )
+else:
+    wuhan_selection = wuhan_options   # incluir todo
+    wuhan_color = False               # sin distinción de color por Wuhan
 
 # -------------------------
 # Aplicar filtros
@@ -138,7 +151,31 @@ y_axis = "cumulative_cases" if case_type == "Casos acumulados" else "cases"
 # -------------------------
 # Agrupación final según modo de color
 # -------------------------
-if wuhan_color:
+
+# Modo "Total sin distinción": colapsar wuhan_status y reagrupar por país
+if wuhan_mode == "Total sin distinción":
+    agg_x = x_axis if x_axis == "days_since_first" else "symptom_onset"
+    df_plot = (
+        df_filtered
+        .groupby(["country", agg_x])["cases"]
+        .sum()
+        .reset_index()
+        .sort_values(["country", agg_x])
+    )
+    df_plot["cumulative_cases"] = df_plot.groupby("country")["cases"].cumsum()
+    y_axis_plot = "cumulative_cases" if case_type == "Casos acumulados" else "cases"
+
+    fig = px.line(
+        df_plot,
+        x=agg_x,
+        y=y_axis_plot,
+        color="country",
+        markers=True,
+        template="plotly_white"
+    )
+    legend_title = "País"
+
+elif wuhan_color:
     # Agrupar por wuhan_status (sumar todos los países seleccionados)
     agg_cols = [x_axis, "wuhan_status"] if x_axis == "days_since_first" else ["symptom_onset", "wuhan_status"]
     df_plot = (
