@@ -21,15 +21,35 @@ df = load_data()
 df["symptom_onset"] = pd.to_datetime(df["symptom_onset"], errors="coerce")
 df = df.dropna(subset=["symptom_onset"])
 
+# Normalizar columnas de Wuhan (convertir a numérico, NaN para no registrado)
+df["visiting Wuhan"] = pd.to_numeric(df["visiting Wuhan"], errors="coerce")
+df["from Wuhan"]     = pd.to_numeric(df["from Wuhan"],     errors="coerce")
+
+# Crear columna de categoría Wuhan
+def classify_wuhan(row):
+    if row["from Wuhan"] == 1:
+        return "De Wuhan"
+    elif row["visiting Wuhan"] == 1:
+        return "Visitó Wuhan"
+    elif row["from Wuhan"] == 0 and row["visiting Wuhan"] == 0:
+        return "Sin vínculo con Wuhan"
+    else:
+        return "No registrado"
+
+df["wuhan_status"] = df.apply(classify_wuhan, axis=1)
+
+# -------------------------
+# Agrupación base
+# -------------------------
 df_grouped = (
-    df.groupby(["country", "symptom_onset"])
+    df.groupby(["country", "symptom_onset", "wuhan_status"])
       .size()
       .reset_index(name="cases")
       .sort_values(["country", "symptom_onset"])
 )
 
 df_grouped["cumulative_cases"] = (
-    df_grouped.groupby("country")["cases"].cumsum()
+    df_grouped.groupby(["country", "wuhan_status"])["cases"].cumsum()
 )
 
 # -------------------------
@@ -68,10 +88,29 @@ case_type = st.sidebar.radio(
     ["Casos acumulados", "Casos diarios"]
 )
 
+# --- Filtro Wuhan ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("Vínculo con Wuhan")
+
+wuhan_options = ["De Wuhan", "Visitó Wuhan", "Sin vínculo con Wuhan", "No registrado"]
+wuhan_selection = st.sidebar.multiselect(
+    "Mostrar categorías",
+    options=wuhan_options,
+    default=wuhan_options
+)
+
+wuhan_color = st.sidebar.checkbox(
+    "Colorear por vínculo con Wuhan (en lugar de por país)",
+    value=False
+)
+
 # -------------------------
 # Aplicar filtros
 # -------------------------
-df_filtered = df_grouped[df_grouped["country"].isin(countries)]
+df_filtered = df_grouped[
+    (df_grouped["country"].isin(countries)) &
+    (df_grouped["wuhan_status"].isin(wuhan_selection))
+]
 
 if len(date_range) == 2:
     df_filtered = df_filtered[
@@ -81,11 +120,11 @@ if len(date_range) == 2:
 
 # Comparación por primeros N días
 if days_from_first > 0:
+    df_filtered = df_filtered.copy()
     df_filtered["days_since_first"] = (
         df_filtered["symptom_onset"] -
         df_filtered.groupby("country")["symptom_onset"].transform("min")
     ).dt.days
-    
     df_filtered = df_filtered[df_filtered["days_since_first"] <= days_from_first]
     x_axis = "days_since_first"
     x_label = "Días desde primer caso"
@@ -94,23 +133,58 @@ else:
     x_label = "Fecha"
 
 # Selección variable Y
-if case_type == "Casos acumulados":
-    y_axis = "cumulative_cases"
+y_axis = "cumulative_cases" if case_type == "Casos acumulados" else "cases"
+
+# -------------------------
+# Agrupación final según modo de color
+# -------------------------
+if wuhan_color:
+    # Agrupar por wuhan_status (sumar todos los países seleccionados)
+    agg_cols = [x_axis, "wuhan_status"] if x_axis == "days_since_first" else ["symptom_onset", "wuhan_status"]
+    df_plot = (
+        df_filtered.groupby(agg_cols)[y_axis]
+        .sum()
+        .reset_index()
+    )
+    color_col = "wuhan_status"
+    legend_title = "Vínculo con Wuhan"
+
+    # Paleta fija por categoría
+    color_map = {
+        "De Wuhan":             "#e74c3c",
+        "Visitó Wuhan":         "#e67e22",
+        "Sin vínculo con Wuhan":"#2ecc71",
+        "No registrado":        "#95a5a6"
+    }
+    fig = px.line(
+        df_plot,
+        x=x_axis,
+        y=y_axis,
+        color=color_col,
+        color_discrete_map=color_map,
+        markers=True,
+        template="plotly_white"
+    )
 else:
-    y_axis = "cases"
+    # Agrupación por país + wuhan_status → línea punteada/sólida según vínculo
+    df_plot = df_filtered.copy()
+    df_plot["serie"] = df_plot["country"] + " — " + df_plot["wuhan_status"]
+
+    fig = px.line(
+        df_plot,
+        x=x_axis,
+        y=y_axis,
+        color="country",
+        line_dash="wuhan_status",
+        markers=True,
+        template="plotly_white",
+        hover_data={"wuhan_status": True}
+    )
+    legend_title = "País / Vínculo Wuhan"
 
 # -------------------------
-# Gráfica
+# Escala y layout
 # -------------------------
-fig = px.line(
-    df_filtered,
-    x=x_axis,
-    y=y_axis,
-    color="country",
-    markers=True,
-    template="plotly_white"
-)
-
 if scale_type == "Logarítmica":
     fig.update_yaxes(type="log")
 
@@ -119,8 +193,21 @@ fig.update_layout(
     xaxis_title=x_label,
     yaxis_title=case_type,
     hovermode="x unified",
-    legend_title="País",
+    legend_title=legend_title,
     height=600
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+# -------------------------
+# Tabla resumen Wuhan
+# -------------------------
+with st.expander("📊 Distribución por vínculo con Wuhan"):
+    summary = (
+        df[df["country"].isin(countries)]
+        .groupby("wuhan_status")
+        .size()
+        .reset_index(name="total_casos")
+        .sort_values("total_casos", ascending=False)
+    )
+    st.dataframe(summary, use_container_width=True)
