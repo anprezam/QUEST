@@ -75,8 +75,8 @@ df_filtered = df_grouped[df_grouped["country"].isin(countries)]
 
 if len(date_range) == 2:
     df_filtered = df_filtered[
-        (df_filtered["hosp_visit_date"] >= pd.to_datetime(date_range[0])) &
-        (df_filtered["hosp_visit_date"] <= pd.to_datetime(date_range[1]))
+        (df_filtered["symptom_onset"] >= pd.to_datetime(date_range[0])) &
+        (df_filtered["symptom_onset"] <= pd.to_datetime(date_range[1]))
     ]
 
 # Comparación por primeros N días
