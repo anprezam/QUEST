@@ -18,7 +18,7 @@ df = load_data()
 # -------------------------
 # Limpieza y preparación
 # -------------------------
-df["hosp_visit_date"] = pd.to_datetime(df["symptom_onset"], errors="coerce")
+df["symptom_onset"] = pd.to_datetime(df["symptom_onset"], errors="coerce")
 df = df.dropna(subset=["symptom_onset"])
 
 df_grouped = (
